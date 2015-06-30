@@ -1,0 +1,51 @@
+---
+title: "06_RPackage_GitHub.Rmd"
+author: "Oscar Legat"
+output: html_document
+---
+
+Load Packages:
+
+```{r Load Packages:}
+if (!(require("devtools", character.only=T, quietly=T))) {
+  install.packages("devtools")
+  library("devtools", character.only=T)
+}
+```
+
+Install and load package:
+```{r Install and load package:}
+
+# Install ol.pr.package
+devtools::install_github('OscarLegat/UTAD/ol.pr.package')
+
+#Load ol.pr.package
+library("ol.pr.package")
+
+```
+
+Test package:
+```{r Test package:}
+
+# hello.world doc
+?hello.world
+
+# suma.dos.numeros doc
+?suma.dos.numeros
+
+# Try suma.dos.numeros
+suma.dos.numeros(3,1)
+
+#Try hello.world
+hello.world()
+
+```
+
+Remove package:
+```{r Remove package:}
+
+# Remove "ol.pr.package"
+remove.packages("ol.pr.package")
+
+```
+

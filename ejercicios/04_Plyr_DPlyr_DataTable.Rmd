@@ -1,0 +1,170 @@
+---
+title: "04_Plyr_DPlyr_DataTable"
+output: html_document
+---
+
+Estudia el porcentaje de ocupación por edades de los Microdatos obtenidos del INE. Este porcentaje
+se calcula por tres medios "ddply", "datatable" y "dplyr".
+Los datos se descargan de la cuenta de GitHub de OscarLegat.
+Todos los datos descargados son colocados en el directorio de trabajo actual, en un directorio que se 
+llama "datos_OscarUTAD". Todos los ejercicios utilizan este directorio. Si no existe el directorio se
+crea solo. Una vez terminada la ejecución, se puede eliminar este directorio.
+
+
+Carga de paquetes:
+
+```{r Carga de paquetes:}
+#Load packages
+
+if (!(require("data.table", character.only=T, quietly=T))) {
+  install.packages("data.table")
+  library("data.table", character.only=T)
+}
+
+if (!(require("reshape2", character.only=T, quietly=T))) {
+  install.packages("reshape2")
+  library("reshape2", character.only=T)
+}
+
+if (!(require("MicroDatosEs", character.only=T, quietly=T))) {
+  install.packages("MicroDatosEs")
+  library("MicroDatosEs", character.only=T)
+}
+
+if (!(require("plyr", character.only=T, quietly=T))) {
+  install.packages("plyr")
+  library("plyr", character.only=T)
+}
+
+if (!(require("dplyr", character.only=T, quietly=T))) {
+  install.packages("dplyr")
+  library("dplyr", character.only=T)
+}
+
+if (!(require("R.utils", character.only=T, quietly=T))) {
+  install.packages("R.utils")
+  library("R.utils", character.only=T)
+}
+```
+
+
+Obtención y colocación de los datos:
+
+```{r Obtención y colocación de los datos:}
+#get data
+URLBase <- "https://raw.githubusercontent.com/OscarLegat/UTAD/master/downloads/"
+dirWorking <- getwd()
+dirDataBase <- "datos_OscarUTAD"
+dirPathDataBase = paste0(dirWorking, "/", dirDataBase)
+destDirectoryCenso2011 = paste0(dirPathDataBase, "/", "censo2011")
+
+
+if (!file.exists(dirPathDataBase)){
+  dir.create(file.path(dirWorking, dirDataBase))
+} 
+
+
+file <- paste0(URLBase, "censo2011.zip")
+destfileZip = paste0(dirPathDataBase,"/","censo2011.zip")
+download.file(file, destfile = destfileZip,method = "curl", quiet = FALSE, mode = "w",cacheOK = TRUE,extra = getOption("download.file.extra"))
+unzip(destfileZip, exdir=dirPathDataBase)
+
+```
+
+Carga de microdatos censo2010:
+
+```{r Carga de microdatos censo2010:}
+#Load Data
+censo <- censo2010(paste0(destDirectoryCenso2011,"/" ,"MicrodatosCP_NV_per_BLOQUE4_CSE.txt"), summary=FALSE)
+memory.size(max = FALSE)
+
+```
+
+
+Proceso con ddply:
+
+```{r Proceso con ddply:}
+#Process by ddply, ocuppied percent by age and community
+
+currentMillis_ddply_1 <- System$currentTimeMillis()
+
+factores <- c("edad", "cpro", "rela");
+
+censo.df <- as.data.frame(censo[, factores]);
+
+censo.df$rela[is.na(censo.df$rela)]<- 'Otra situación'
+
+
+occupied.percent <- ddply(censo.df, .(edad, cpro), function(x) {
+  totalNumber = nrow(x)
+  numberOccupied = nrow(x[x$rela == 'Ocupado',])
+  occupied.percent = (numberOccupied/totalNumber)*100
+  data.frame(occupied.percent = occupied.percent)
+})
+
+currentMillis1_ddply_2 <- System$currentTimeMillis()
+time_consumedcurrentMillis_ddply <- currentMillis1_ddply_2 - currentMillis_ddply_1
+
+head(subset(occupied.percent, edad > 16))
+
+
+```
+
+Proceso con datatable:
+
+```{r Proceso con datatable:}
+#Process by datatable, ocuppied percent by age and community
+
+currentMillis1_datatable_1 <- System$currentTimeMillis()
+
+censo.dt <- as.data.table(censo.df)
+
+censo.dt$swOcupado <- ifelse( censo.dt$rela == "Ocupado",1,0)
+
+censo.dt$sumaAux <- ifelse( censo.dt$rela == "Ocupado",1,1)
+
+
+censo.summarize <- censo.dt[, list(sumOcupaCount = sum(swOcupado) , sumTotalCont =  sum(sumaAux)), by = c("edad", "cpro")]
+
+censo.summarize[, percentOcupa := {(sumOcupaCount / sumTotalCont) * 100},]
+
+setkeyv(censo.summarize, c("edad", "cpro"))
+
+currentMillis1_datatable_2 <- System$currentTimeMillis()
+time_consumedcurrentMillis_datatable <- currentMillis1_datatable_2 - currentMillis1_datatable_1 
+
+head(censo.summarize[censo.summarize$edad > 16])
+
+```
+
+
+Proceso con dplyr:
+
+```{r Proceso con dplyr:}
+#Process by dplyr, ocuppied percent by age and community
+currentMillis1_dplyr_1 <- System$currentTimeMillis()
+
+censo.dplyr <- copy(censo.df)
+
+censo.dplyr <- censo.dplyr %>% mutate(sumaAux = 1)
+
+censo.dplyr <- censo.dplyr %>% mutate(swOcupado = ifelse( censo.dplyr$rela == "Ocupado",1,0))
+
+censo.dplyr.summarize <- censo.dplyr %>% group_by(edad, cpro) %>% summarise((sum(swOcupado)/sum(sumaAux))*100)
+
+currentMillis1_dplyr_2 <- System$currentTimeMillis()
+time_consumedcurrentMillis_dplyr <- currentMillis1_dplyr_2 - currentMillis1_dplyr_1 
+
+head(subset(censo.dplyr.summarize, edad > 16))
+```
+
+Resultado de tiempos:
+
+```{r Resultado de tiempos:}
+#Times consumed
+
+print(paste0("\nTime consumed in datatable: ",time_consumedcurrentMillis_datatable," milliseconds") )
+print(paste0("\nTime consumed in dplyr: ",time_consumedcurrentMillis_dplyr," milliseconds") )
+print(paste0("\nTime consumed in ddply: ",time_consumedcurrentMillis_ddply," milliseconds") )
+
+````

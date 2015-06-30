@@ -1,0 +1,149 @@
+---
+title: "02_JSON.Rmd"
+output: html_document
+---
+Muestra la evolución del incremento de empadronamiento de Santander, comparando extranjeros, con nacionales.
+Los datos se descargan de la cuenta de GitHub de OscarLegat.
+Todos los datos descargados son colocados en el directorio de trabajo actual, en un directorio que se 
+llama "datos_OscarUTAD". Todos los ejercicios utilizan este directorio. Si no existe el directorio se
+crea solo. Una vez terminada la ejecución, se puede eliminar este directorio.
+
+Load packages:
+
+```{r Load packages:}
+#Load packages
+
+if (!(require("rjson", character.only=T, quietly=T))) {
+  install.packages("rjson")
+  library("rjson", character.only=T)
+}
+if (!(require("ggplot2", character.only=T, quietly=T))) {
+  install.packages("ggplot2")
+  library("ggplot2", character.only=T)
+}
+
+if (!(require("yaml", character.only=T, quietly=T))) {
+  install.packages("yaml")
+  library("yaml", character.only=T)
+}
+
+if (!(require("htmltools", character.only=T, quietly=T))) {
+  install.packages("htmltools")
+  library("htmltools", character.only=T)
+}
+
+if (!(require("data.table", character.only=T, quietly=T))) {
+  install.packages("data.table")
+  library("data.table", character.only=T)
+}
+
+if (!(require("reshape2", character.only=T, quietly=T))) {
+  install.packages("reshape2")
+  library("reshape2", character.only=T)
+}
+
+if (!(require("quantmod", character.only=T, quietly=T))) {
+  install.packages("quantmod")
+  library("quantmod", character.only=T)
+}
+
+```
+
+
+Carga y colocación de datos:
+
+```{r Carga y colocación de datos:}
+
+#get data
+URLBase <- URLBase <- "https://raw.githubusercontent.com/OscarLegat/UTAD/master/downloads/"
+dirWorking <- getwd()
+dirDataBase <- "datos_OscarUTAD"
+dirPathDataBase = paste0(dirWorking, "/", dirDataBase)
+destDirectoryPoblJSON = paste0(dirPathDataBase, "/", "poblJSON")
+
+
+if (!file.exists(dirPathDataBase)){
+  dir.create(file.path(dirWorking, dirDataBase))
+} 
+
+
+file <- paste0(URLBase, "poblJSON.zip")
+destfileZip = paste0(dirPathDataBase,"/","poblJSON.zip")
+download.file(file, destfile = destfileZip,method = "curl", quiet = FALSE, mode = "w",cacheOK = TRUE,extra = getOption("download.file.extra"))
+unzip(destfileZip, exdir=dirPathDataBase)
+
+```
+
+
+Load JSON:
+
+```{r Load JSON:}
+#Load JSON:
+
+historico_poblacion <- readLines(paste0(destDirectoryPoblJSON, "/","poblacion_pob2014.json"))
+lt.historico_poblacion <- fromJSON(historico_poblacion)
+
+```
+
+
+Process data:
+
+
+```{r Process data:}
+
+#Process data
+
+historico_poblacion <- lapply(lt.historico_poblacion$resources, function(x) {
+  list(as.character(unlist(x["dc:identifier"])), as.character(unlist(x["ayto:nacionalidad"])), as.character(unlist(x["ayto:fechaAltaAnyo"])))
+})
+
+
+dataFrame <- do.call("rbind", historico_poblacion)
+dataTable <- as.data.table(dataFrame)
+dataTable <- dataTable[, auxSum := 1]
+setnames(dataTable,c("Id", "Nacionalidad", "AuxAnyo", "AuxSum"))
+dataTable <- dataTable[, Anyo := as.numeric(AuxAnyo)]
+dataTable <- dataTable[!is.null(Id) && !is.null(Nacionalidad) && !is.null(Anyo) && !is.na(Anyo)]
+dataTable$swProcEspanya <- ifelse( dataTable$Nacionalidad == "ESPAÑA",1,0)
+dataTable$swProcExtranjera <- ifelse( dataTable$Nacionalidad == "ESPAÑA",0,1)
+dataTable$SpanishForeigner <- ifelse( dataTable$Nacionalidad == "ESPAÑA","Spanish","Foreigner")
+
+dataTable.summarize <- dataTable[, list(sumTotPobAnyo = sum(AuxSum) , sumTotalProcEspanya =  sum(swProcEspanya), sumTotalProcExtranjera =  sum(swProcExtranjera)), by = c("Anyo")]
+dataTable.summarize <- dataTable.summarize[!is.na(Anyo)]
+dataTable.summarize <- dataTable.summarize[order(Anyo)]
+
+dataTable.summarize$deltaProcEspanya <- Delt(dataTable.summarize$sumTotalProcEspanya, type = c("arithmetic"))
+
+dataTable.summarize$deltaProcExtranjera <- Delt(dataTable.summarize$sumTotalProcExtranjera, type = c("arithmetic"))
+
+
+```
+
+
+Plot1:
+
+```{r qplot Plot1:}
+
+#Plot 1
+plot <- ggplot(dataTable[Anyo > 2005], aes(Anyo, fill=SpanishForeigner))  + geom_bar(position="dodge")
+print(plot)
+
+````
+
+
+
+Plot2:
+
+```{r qplot Plot2:}
+#Plot 2
+plot <- ggplot(dataTable.summarize[Anyo > 2006] ,legend.position = "top", guide="legend")+ 
+  theme_bw()+
+  geom_line(aes(x=Anyo, y=deltaProcExtranjera), color='red') + 
+  geom_line(aes(x=Anyo, y=deltaProcEspanya), color='blue')+ 
+  scale_colour_manual(values=c("Extranjera" = "red", "Española" ="blue"))+
+  xlab("\nAnyo") + 
+  ylab('Incremento población %')
+
+  
+  print(plot)
+````
